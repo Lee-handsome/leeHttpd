@@ -1,0 +1,26 @@
+#include <iostream>
+#include <stdlib.h>
+using namespace std;
+
+int main()
+{
+	char* p;
+	char buf[]="POST /search HTTP/1.1 \r\nAccept-Language: zh-cn\r\n\r\nhl=zh-CN&source=hp&q=domety ";
+
+
+	p = strtok(buf ,"\r\n");
+	cout<<p<<endl;
+	//cout<<buf<<endl;
+	char* target;
+	while(p!=NULL){
+		target=p;
+		p=strtok(NULL,"\r\n");
+		cout<<p<<endl;
+		
+	}
+	cout<<"target"<<target<<endl;
+	//char* np=strtok(buf,NULL);
+	//cout<<np<<endl;
+	return 0;
+}
+
