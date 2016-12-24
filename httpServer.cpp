@@ -32,9 +32,13 @@ void* accept_request(void* clientfd)
 	char* line;
 	char* method;
 	char* url;
-
-	recv(client,request,sizeof(request),0);
-	cout<<endl;
+	//TODO    How to fix this shit bug!
+	int ret=recv(client,request,sizeof(request),0);
+	if(ret ==0){
+		close(client);
+		return;
+	}
+	cerr<<"ret:"<<ret<<endl;
 	cout<<"accept:"<<client<<"request:"<<request<<endl;
 	char* ptr= strtok(request,"\r\n");
 	line = ptr;
@@ -44,7 +48,7 @@ void* accept_request(void* clientfd)
 	}
 	
 	method=strtok(line," ");
-	cout<<"method:"<<method<<endl;
+	//cout<<"method:"<<method<<endl;
 	url = strtok(NULL," ");
 	cout<<endl;
 	cout<<"url:"<<url<<endl;
@@ -111,7 +115,7 @@ void send_staticfile(int client, char* path)
 	char buf[1024];
 	if(fp==NULL){
 		perror("open staticfile error");
-		response404(client);
+		//response404(client);
 		return;
 	}
 	send_header(client);
@@ -216,8 +220,12 @@ void startup_cgi(int client,char* method,char* path,char* param,char* content)
 
 void response404(int client)
 {
-	send_header(client);
+	//send_header(client);
+	char status[] = "HTTP/1.0 404 NOT FOUND\r\n";
+	char header[] = "Server: leeHttpd\r\nContent-Type: text/html\r\n\r\n";
 	char body[] = "<html><body>404 Not Found from leeHttpd</body></html>";
+	send(client,status,strlen(status),0);
+	send(client,header,strlen(header),0);
 	send(client,body,strlen(body),0);
 	close(client);
 }
