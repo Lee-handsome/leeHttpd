@@ -1,3 +1,4 @@
+//version epoll
 #include <unistd.h>
 #include <stdio.h>
 #include <sys/socket.h>
@@ -10,11 +11,16 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <iostream>
+#include <sys/epoll.h>
+#include <fcntl.h>
+#include "threadpoll.h"
 using namespace std;
 
 #define PORT 8888
 #define MAX_BUF 1024*8
+#define MAX_EVENTS 10000
 
+int epollFD=0;
 void* accept_request(void* clientfd);
 void do_get(char* url,int client);
 void do_post(char* url,int client,char* content);
@@ -22,6 +28,41 @@ void send_staticfile(int client, char* path);
 void startup_cgi(int client,char* method,char* path,char* param,char* content);
 void response404(int client);
 void send_header(int client);
+
+int setnonblocking( int fd )
+{
+    //int old_option = fcntl( fd, F_GETFL );
+    //int new_option = old_option | O_NONBLOCK;
+    fcntl( fd, F_SETFL, fcntl(fd,F_GETFL)| O_NONBLOCK);
+    return 0;
+}
+
+void addfd( int epollfd, int fd, bool oneshot )
+{
+    epoll_event event;
+    event.data.fd = fd;
+    event.events = EPOLLIN | EPOLLET | EPOLLRDHUP;//对方断开tcp连接
+    if( oneshot )
+    {
+        event.events |= EPOLLONESHOT;
+    }
+    epoll_ctl( epollfd, EPOLL_CTL_ADD, fd, &event );
+    setnonblocking( fd );
+}
+
+void removefd( int epollfd, int fd )
+{
+    epoll_ctl( epollfd, EPOLL_CTL_DEL, fd, 0 );
+    close( fd );
+}
+
+void modfd( int epollfd, int fd, int ev )
+{
+    epoll_event event;
+    event.data.fd = fd;
+    event.events = ev | EPOLLET | EPOLLONESHOT | EPOLLRDHUP;
+    epoll_ctl( epollfd, EPOLL_CTL_MOD, fd, &event );
+}
 
 void* accept_request(void* clientfd)
 {
@@ -35,6 +76,14 @@ void* accept_request(void* clientfd)
 	//TODO    How to fix this shit bug!
 	int ret=recv(client,request,sizeof(request),0);
 	if(ret ==0){
+		perror("client closed tcp-link");
+		removefd(epollFD,client);
+		close(client);
+		return (void*)0;
+	}
+	if(ret==-1){
+		perror("recv error");
+		removefd(epollFD,client);
 		close(client);
 		return (void*)0;
 	}
@@ -94,6 +143,7 @@ void do_get(char* url,int client)
 	else{
 		send_staticfile(client,path);
 	}
+	removefd(epollFD,client);
 	close(client);
 }
 
@@ -102,8 +152,8 @@ void do_post(char* url,int client,char* content)
 	char path[512];
 	startup_cgi(client,"POST",url,NULL,content);
 	cerr<<"post close"<<endl;
+	removefd(epollFD,client);
 	close(client);
-
 }
 void send_staticfile(int client, char* path)
 {
@@ -242,7 +292,6 @@ int main()
 {
 	int server_sock;
 	int client_sock;
-	pthread_t tid;
 	struct sockaddr_in server_addr;
 	struct sockaddr_in client_addr;
 	socklen_t client_len = sizeof(client_addr);
@@ -273,16 +322,50 @@ int main()
 		perror("listen error");
 		exit(1);
 	}
-
+	epoll_event events[MAX_EVENTS];
+	int epollfd = epoll_create(MAX_EVENTS);
+	if(epollfd==-1){
+		perror("epoll_create error");
+		exit(1);
+	}
+	epollFD=epollfd;
+	addfd(epollfd,server_sock,false);
+	ThreadPoll mypoll;
 	while(1){
-		client_sock = accept(server_sock,(struct sockaddr*)&client_addr,&client_len);
-		if(client_sock == -1){
+		int ret = epoll_wait(epollfd,events,MAX_EVENTS,-1);
+		if(ret < 0){
+			perror("epoll_wait error");
+			break;
+		}
+		for(int i=0;i<ret;i++)
+		{
+			int sockfd = events[i].data.fd;
+			if( sockfd == server_sock){
+				client_sock = accept(server_sock,(struct sockaddr*)&client_addr,&client_len);
+				if(client_sock == -1){
+					perror("accept error");
+					exit(1);
+				}
+				addfd(epollfd,client_sock,false);
+			}
+			else if(events[i].events & EPOLLIN){
+				//pthread_t tid;
+				//if (pthread_create(&tid , NULL, accept_request, &sockfd) != 0)
+            		//perror("pthread_create error");
+				mypoll.addTask(accept_request,sockfd);
+			}
+			else{
+				cerr<<"nothing event"<<endl;
+			}
+		}
+		//client_sock = accept(server_sock,(struct sockaddr*)&client_addr,&client_len);
+		/*if(client_sock == -1){
 			perror("accept error");
 			exit(1);
 		}
-		if (pthread_create(&tid , NULL, accept_request, &client_sock) != 0)
-            perror("pthread_create error");
+		*/
 	}
+	close(epollfd);
 	close(server_sock);
 	return 0;
 }
