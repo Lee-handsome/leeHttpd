@@ -50,7 +50,7 @@ class ThreadPoll
 		int max_thread_nums;
 		int max_tasks;
 		pthread_t tid[5];
-		std::list<task_t> thread_queue;//线程队列
+		std::list<task_t> thread_queue;
 		locker mylocker;
 	public:
 		ThreadPoll(int threadnums = 4,int tasknums = 10000):max_thread_nums(threadnums),max_tasks(tasknums)
