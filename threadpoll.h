@@ -53,9 +53,9 @@ class ThreadPoll
 		std::list<task_t> thread_queue;//线程队列
 		locker mylocker;
 	public:
-		ThreadPoll(int threadnums = 5,int tasknums = 10000):max_thread_nums(threadnums),max_tasks(tasknums)
+		ThreadPoll(int threadnums = 4,int tasknums = 10000):max_thread_nums(threadnums),max_tasks(tasknums)
 		{
-			for(int i=0;i<5;i++)
+			for(int i=0;i<max_thread_nums;i++)
 			{
 				if(pthread_create(&tid[i],NULL,work,this)!=0){
 					perror("pthread_create error");
