@@ -14,6 +14,7 @@
 #include <sys/epoll.h>
 #include <fcntl.h>
 #include "threadpoll.h"
+#include "epoll_function.h"
 using namespace std;
 
 #define PORT 8888
@@ -29,40 +30,6 @@ void startup_cgi(int client,char* method,char* path,char* param,char* content);
 void response404(int client);
 void send_header(int client);
 
-int setnonblocking( int fd )
-{
-    //int old_option = fcntl( fd, F_GETFL );
-    //int new_option = old_option | O_NONBLOCK;
-    fcntl( fd, F_SETFL, fcntl(fd,F_GETFL)| O_NONBLOCK);
-    return 0;
-}
-
-void addfd( int epollfd, int fd, bool oneshot )
-{
-    epoll_event event;
-    event.data.fd = fd;
-    event.events = EPOLLIN | EPOLLET | EPOLLRDHUP;//对方断开tcp连接
-    if( oneshot )
-    {
-        event.events |= EPOLLONESHOT;
-    }
-    epoll_ctl( epollfd, EPOLL_CTL_ADD, fd, &event );
-    setnonblocking( fd );
-}
-
-void removefd( int epollfd, int fd )
-{
-    epoll_ctl( epollfd, EPOLL_CTL_DEL, fd, 0 );
-    close( fd );
-}
-
-void modfd( int epollfd, int fd, int ev )
-{
-    epoll_event event;
-    event.data.fd = fd;
-    event.events = ev | EPOLLET | EPOLLONESHOT | EPOLLRDHUP;
-    epoll_ctl( epollfd, EPOLL_CTL_MOD, fd, &event );
-}
 
 void* accept_request(void* clientfd)
 {
@@ -301,12 +268,14 @@ int main()
 		perror("socket error");
 		exit(1);
 	}
+	/*
 	int opt = 1;
 	if(-1 == setsockopt(server_sock,SOL_SOCKET,SO_REUSEADDR,&opt,sizeof(opt)))
 	{
 		perror("setsockopt error");
 		exit(1);
 	}
+	*/
 
 	//init server_addr
 	memset(&server_addr,0,sizeof(server_addr));
@@ -330,6 +299,7 @@ int main()
 	}
 	epollFD=epollfd;
 	addfd(epollfd,server_sock,false);
+	//线程池对象
 	ThreadPoll mypoll;
 	while(1){
 		int ret = epoll_wait(epollfd,events,MAX_EVENTS,-1);
